@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Event Orchestration Pipeline</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Oswald:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#07101f; --grid:#0f1e33; --panel:#0b1828;
+    --border:#18324f; --border-hi:#2a5080;
+    --text:#ddeeff; --muted:#3d6080;
+    --accent:#f97316; --green:#34d399;
+    --ca:#38bdf8; --cb:#facc15; --cc:#f472b6;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  html,body{min-height:100%;background:var(--bg);color:var(--text);font-family:'JetBrains Mono',monospace}
+  body{
+    background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+    background-size:24px 24px;padding:16px 12px 32px
+  }
+  .sheet{max-width:940px;margin:0 auto;border:1px solid var(--border);background:rgba(7,16,31,.72);backdrop-filter:blur(4px)}
+
+  /* HEADER */
+  .hd{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:20px 22px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+  .eyebrow{display:flex;align-items:center;gap:7px;font-family:'Oswald',sans-serif;font-size:10.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--accent);margin-bottom:7px}
+  .live-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 10px var(--accent);animation:blink 1.4s ease-in-out infinite;flex-shrink:0}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.15}}
+  h1{font-family:'Oswald',sans-serif;font-size:clamp(19px,3.8vw,29px);font-weight:600;letter-spacing:-.01em;color:#f0f8ff;margin-bottom:5px}
+  .hd-desc{font-size:10.5px;color:var(--muted);line-height:1.6;max-width:52ch}
+  .hd-right{display:flex;flex-direction:column;align-items:flex-end;gap:5px}
+  .clock{font-family:'Oswald',sans-serif;font-size:28px;font-weight:700;letter-spacing:.05em;color:#f0f8ff;line-height:1}
+  .clock-lbl{font-size:9px;letter-spacing:.14em;color:var(--muted);text-transform:uppercase}
+  .sys-ok{display:flex;align-items:center;gap:5px;font-size:9.5px;color:var(--green);letter-spacing:.07em}
+  .sys-dot{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
+
+  /* STATS */
+  .stats{display:grid;grid-template-columns:repeat(5,1fr);border-bottom:1px solid var(--border)}
+  .sc{padding:13px 14px;border-right:1px solid var(--border);position:relative;overflow:hidden}
+  .sc:last-child{border-right:none}
+  .sc::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--clr,var(--accent))}
+  .sc-lbl{font-family:'Oswald',sans-serif;font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+  .sc-val{font-family:'Oswald',sans-serif;font-size:26px;font-weight:700;line-height:1;color:var(--clr,#f0f8ff)}
+  .sc-val.bump{animation:bump .28s ease}
+  @keyframes bump{0%{transform:scale(1)}50%{transform:scale(1.18);color:#fff}100%{transform:scale(1)}}
+  .sc-sub{font-size:9px;color:var(--muted);margin-top:3px}
+
+  /* SCHEMATIC */
+  .sch-wrap{padding:18px 14px 6px}
+  svg{display:block;width:100%;height:auto;overflow:visible}
+  .track-ghost{fill:none;stroke:rgba(255,255,255,.07);stroke-width:1.5;stroke-dasharray:4 7}
+  .station-frame{fill:var(--panel);stroke:var(--border);stroke-width:1.5;transition:stroke .3s,filter .3s}
+  .station-frame.glow-a{stroke:var(--ca);filter:drop-shadow(0 0 9px rgba(56,189,248,.55))}
+  .station-frame.glow-b{stroke:var(--cb);filter:drop-shadow(0 0 9px rgba(250,204,21,.55))}
+  .station-frame.glow-c{stroke:var(--cc);filter:drop-shadow(0 0 9px rgba(244,114,182,.55))}
+
+  /* BOTTOM */
+  .bottom{display:grid;grid-template-columns:1fr 256px;border-top:1px solid var(--border)}
+  .log-head{display:grid;grid-template-columns:40px 58px 1fr 148px;gap:8px;padding:8px 14px;background:rgba(24,50,79,.18);border-bottom:1px solid var(--border);font-family:'Oswald',sans-serif;font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--muted)}
+  .log-body{max-height:210px;overflow-y:auto}
+  .log-row{display:grid;grid-template-columns:40px 58px 1fr 148px;gap:8px;padding:7px 14px;font-size:10.5px;border-bottom:1px solid rgba(24,50,79,.35);animation:rowIn .3s ease}
+  @keyframes rowIn{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:translateX(0)}}
+  .lr-n,.lr-t{color:var(--muted)}
+  .lr-r.a{color:var(--ca)}.lr-r.b{color:var(--cb)}.lr-r.c{color:var(--cc)}
+
+  /* DIST */
+  .dist{border-left:1px solid var(--border);padding:15px 15px 13px;display:flex;flex-direction:column;gap:12px}
+  .dist-title{font-family:'Oswald',sans-serif;font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}
+  .di{display:flex;flex-direction:column;gap:4px}
+  .di-meta{display:flex;justify-content:space-between;font-size:9.5px;color:var(--muted)}
+  .di-meta .dn{color:var(--text)}
+  .di-track{height:5px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden}
+  .di-fill{height:100%;border-radius:2px;transition:width .5s ease;width:0}
+  .di-fill.a{background:var(--ca);box-shadow:0 0 8px var(--ca)}
+  .di-fill.b{background:var(--cb);box-shadow:0 0 8px var(--cb)}
+  .di-fill.c{background:var(--cc);box-shadow:0 0 8px var(--cc)}
+
+  .thru{margin-top:auto}
+  .thru-lbl{font-family:'Oswald',sans-serif;font-size:9.5px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted);margin-bottom:7px}
+  .thru-bars{display:flex;align-items:flex-end;gap:3px;height:38px}
+  .thru-bar{flex:1;background:rgba(249,115,22,.3);border-radius:2px 2px 0 0;transition:height .4s ease;min-height:3px}
+  .thru-bar.now{background:var(--accent);box-shadow:0 0 8px var(--accent)}
+
+  /* FOOTER */
+  .footer{display:flex;flex-wrap:wrap;gap:5px 20px;padding:10px 22px 14px;border-top:1px solid var(--border);font-size:9.5px;color:var(--muted)}
+  .footer b{color:var(--text)}
+
+  ::-webkit-scrollbar{width:5px}
+  ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+
+  @media(max-width:580px){
+    .bottom{grid-template-columns:1fr}
+    .dist{border-left:none;border-top:1px solid var(--border)}
+    .stats{grid-template-columns:repeat(3,1fr)}
+    .sc:nth-child(4),.sc:nth-child(5){display:none}
+    .log-head,.log-row{grid-template-columns:36px 1fr 120px}
+    .log-head span:nth-child(2),.lr-t{display:none}
+  }
+  @media(prefers-reduced-motion:reduce){*{animation-duration:.01ms !important;transition-duration:.01ms !important}}
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <!-- HEADER -->
+  <div class="hd">
+    <div>
+      <div class="eyebrow"><span class="live-dot"></span>System Schematic · Realtime</div>
+      <h1>Event Orchestration Pipeline</h1>
+      <p class="hd-desc">The router classifies each incoming event and dispatches it to the correct tool handler with sub-100ms latency.</p>
+    </div>
+    <div class="hd-right">
+      <div class="clock" id="clock">00:00:00</div>
+      <div class="clock-lbl">system clock</div>
+      <div class="sys-ok"><span class="sys-dot"></span>ALL SYSTEMS NOMINAL</div>
+    </div>
+  </div>
+
+  <!-- STATS -->
+  <div class="stats">
+    <div class="sc" style="--clr:var(--accent)">
+      <div class="sc-lbl">Total Events</div>
+      <div class="sc-val" id="st-tot">0</div>
+      <div class="sc-sub">processed</div>
+    </div>
+    <div class="sc" style="--clr:var(--ca)">
+      <div class="sc-lbl">Route A</div>
+      <div class="sc-val" id="st-a">0</div>
+      <div class="sc-sub" id="st-a-p">—%</div>
+    </div>
+    <div class="sc" style="--clr:var(--cb)">
+      <div class="sc-lbl">Route B</div>
+      <div class="sc-val" id="st-b">0</div>
+      <div class="sc-sub" id="st-b-p">—%</div>
+    </div>
+    <div class="sc" style="--clr:var(--cc)">
+      <div class="sc-lbl">Route C</div>
+      <div class="sc-val" id="st-c">0</div>
+      <div class="sc-sub" id="st-c-p">—%</div>
+    </div>
+    <div class="sc" style="--clr:var(--green)">
+      <div class="sc-lbl">Avg Latency</div>
+      <div class="sc-val" id="st-lat">—</div>
+      <div class="sc-sub">milliseconds</div>
+    </div>
+  </div>
+
+  <!-- SCHEMATIC -->
+  <div class="sch-wrap">
+    <svg id="svgMain" viewBox="0 0 920 380" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <filter id="fglow"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+      </defs>
+
+      <!-- ghost tracks -->
+      <path class="track-ghost" d="M 236 178 C 380 178, 470 72, 600 72"/>
+      <path class="track-ghost" d="M 236 192 L 600 192"/>
+      <path class="track-ghost" d="M 236 206 C 380 206, 470 312, 600 312"/>
+
+      <!-- motion paths (invisible) -->
+      <path id="pa" d="M 236 178 C 380 178, 470 72, 600 72" fill="none" stroke="none"/>
+      <path id="pb" d="M 236 192 L 600 192" fill="none" stroke="none"/>
+      <path id="pc" d="M 236 206 C 380 206, 470 312, 600 312" fill="none" stroke="none"/>
+
+      <!-- INPUT -->
+      <rect x="14" y="154" width="138" height="76" rx="3" fill="var(--panel)" stroke="var(--border)" stroke-width="1.5"/>
+      <rect x="14" y="154" width="138" height="3" rx="1" fill="var(--accent)" opacity=".85"/>
+      <text x="24" y="173" font-family="Oswald,sans-serif" font-size="9.5" fill="var(--muted)" letter-spacing=".14em">INCOMING EVENT</text>
+      <text id="sig1" x="24" y="196" font-family="JetBrains Mono,monospace" font-size="12" font-weight="600" fill="var(--text)">—</text>
+      <text id="sig2" x="24" y="212" font-family="JetBrains Mono,monospace" font-size="12" font-weight="600" fill="var(--text)"></text>
+
+      <!-- connector -->
+      <line x1="152" y1="192" x2="168" y2="192" stroke="var(--muted)" stroke-width="1.5" stroke-dasharray="3 3"/>
+      <polygon points="170,188 178,192 170,196" fill="var(--muted)"/>
+
+      <!-- ROUTER -->
+      <circle cx="206" cy="192" r="40" fill="none" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 5"/>
+      <circle cx="206" cy="192" r="30" fill="none" stroke="var(--border-hi)" stroke-width="1.2"/>
+      <circle cx="206" cy="192" r="21" fill="var(--panel)" stroke="var(--border-hi)" stroke-width="2"/>
+      <circle id="rcore" cx="206" cy="192" r="8" fill="var(--accent)" opacity=".9"/>
+      <text x="206" y="228" font-family="Oswald,sans-serif" font-size="9.5" fill="var(--muted)" text-anchor="middle" letter-spacing=".13em">ROUTER</text>
+
+      <!-- STATION A -->
+      <rect id="fra" class="station-frame" x="600" y="26" width="300" height="92" rx="3"/>
+      <rect x="600" y="26" width="300" height="3" rx="1" fill="var(--ca)" opacity=".8"/>
+      <text x="618" y="55" font-family="Oswald,sans-serif" font-size="13" font-weight="600" fill="#f0f8ff">TOOL A — Handler</text>
+      <text x="618" y="72" font-family="JetBrains Mono,monospace" font-size="9" fill="var(--muted)" letter-spacing=".05em">default · general routing</text>
+      <text id="ca" x="618" y="98" font-family="JetBrains Mono,monospace" font-size="10" fill="var(--ca)">events: 0 · idle</text>
+
+      <!-- STATION B -->
+      <rect id="frb" class="station-frame" x="600" y="146" width="300" height="92" rx="3"/>
+      <rect x="600" y="146" width="300" height="3" rx="1" fill="var(--cb)" opacity=".8"/>
+      <text x="618" y="175" font-family="Oswald,sans-serif" font-size="13" font-weight="600" fill="#f0f8ff">TOOL B — Processor</text>
+      <text x="618" y="192" font-family="JetBrains Mono,monospace" font-size="9" fill="var(--muted)" letter-spacing=".05em">payments · jobs · async tasks</text>
+      <text id="cb" x="618" y="218" font-family="JetBrains Mono,monospace" font-size="10" fill="var(--cb)">events: 0 · idle</text>
+
+      <!-- STATION C -->
+      <rect id="frc" class="station-frame" x="600" y="266" width="300" height="92" rx="3"/>
+      <rect x="600" y="266" width="300" height="3" rx="1" fill="var(--cc)" opacity=".8"/>
+      <text x="618" y="295" font-family="Oswald,sans-serif" font-size="13" font-weight="600" fill="#f0f8ff">TOOL C — Logger</text>
+      <text x="618" y="312" font-family="JetBrains Mono,monospace" font-size="9" fill="var(--muted)" letter-spacing=".05em">errors · warnings · audit trail</text>
+      <text id="cc" x="618" y="338" font-family="JetBrains Mono,monospace" font-size="10" fill="var(--cc)">events: 0 · idle</text>
+
+      <!-- legend -->
+      <circle cx="16" cy="358" r="4" fill="var(--ca)"/>
+      <text x="26" y="362" font-family="JetBrains Mono,monospace" font-size="8.5" fill="var(--muted)">Route A — default</text>
+      <circle cx="148" cy="358" r="4" fill="var(--cb)"/>
+      <text x="158" y="362" font-family="JetBrains Mono,monospace" font-size="8.5" fill="var(--muted)">Route B — process*</text>
+      <circle cx="290" cy="358" r="4" fill="var(--cc)"/>
+      <text x="300" y="362" font-family="JetBrains Mono,monospace" font-size="8.5" fill="var(--muted)">Route C — error*</text>
+    </svg>
+  </div>
+
+  <!-- BOTTOM -->
+  <div class="bottom">
+    <div>
+      <div class="log-head"><span>NO.</span><span>TIME</span><span>EVENT</span><span>DISPATCHED TO</span></div>
+      <div class="log-body" id="logBody"></div>
+    </div>
+    <div class="dist">
+      <div class="dist-title">Distribution</div>
+      <div class="di">
+        <div class="di-meta"><span class="dn">Route A</span><span id="dp-a">0%</span></div>
+        <div class="di-track"><div class="di-fill a" id="df-a"></div></div>
+      </div>
+      <div class="di">
+        <div class="di-meta"><span class="dn">Route B</span><span id="dp-b">0%</span></div>
+        <div class="di-track"><div class="di-fill b" id="df-b"></div></div>
+      </div>
+      <div class="di">
+        <div class="di-meta"><span class="dn">Route C</span><span id="dp-c">0%</span></div>
+        <div class="di-track"><div class="di-fill c" id="df-c"></div></div>
+      </div>
+      <div class="thru">
+        <div class="thru-lbl">Throughput</div>
+        <div class="thru-bars" id="thruBars"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <span>DWG <b>ORC-002</b></span>
+    <span>REV <b>C</b></span>
+    <span>SCALE <b>NTS</b></span>
+    <span>STATUS <b style="color:var(--green)">● LIVE SIM</b></span>
+    <span>DESIGNED BY <b>Ramon Cortez · AI Architect</b></span>
+  </div>
+
+</div>
+<script>
+(function(){
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.getElementById('svgMain');
+  const COLORS = {a:'#38bdf8', b:'#facc15', c:'#f472b6'};
+  const LABELS = {a:'Tool A (Handler)', b:'Tool B (Processor)', c:'Tool C (Logger)'};
+  const EVENTS = [
+    {label:'user signup',        route:'a'},
+    {label:'profile updated',    route:'a'},
+    {label:'analytics ping',     route:'a'},
+    {label:'content published',  route:'a'},
+    {label:'new subscriber',     route:'a'},
+    {label:'process payment',    route:'b'},
+    {label:'process refund',     route:'b'},
+    {label:'job queued',         route:'b'},
+    {label:'batch export',       route:'b'},
+    {label:'error: timeout',     route:'c'},
+    {label:'error: auth fail',   route:'c'},
+    {label:'warning: rate limit',route:'c'},
+  ];
+
+  const counts = {total:0, a:0, b:0, c:0};
+  const perCnt = {a:0, b:0, c:0};
+  const SLOTS = 22;
+  const thruHist = Array(SLOTS).fill(0);
+  let evNum = 0;
+
+  // throughput bars
+  const thruEl = document.getElementById('thruBars');
+  const thruBars = [];
+  for(let i=0;i<SLOTS;i++){
+    const b = document.createElement('div');
+    b.className='thru-bar';
+    thruEl.appendChild(b);
+    thruBars.push(b);
+  }
+
+  // clock
+  const pad = v => String(v).padStart(2,'0');
+  function tick_clock(){
+    const n = new Date();
+    document.getElementById('clock').textContent = `${pad(n.getHours())}:${pad(n.getMinutes())}:${pad(n.getSeconds())}`;
+  }
+  tick_clock(); setInterval(tick_clock,1000);
+
+  // particle
+  function particle(pathId, color){
+    const path = document.getElementById(pathId);
+    const len = path.getTotalLength();
+    const g = document.createElementNS(NS,'g');
+    const glow = document.createElementNS(NS,'circle');
+    glow.setAttribute('r','9'); glow.setAttribute('fill',color); glow.setAttribute('opacity','0.22');
+    const core = document.createElementNS(NS,'circle');
+    core.setAttribute('r','4'); core.setAttribute('fill',color);
+    core.setAttribute('style',`filter:drop-shadow(0 0 7px ${color})`);
+    g.appendChild(glow); g.appendChild(core); svg.appendChild(g);
+    const dur = 680, t0 = performance.now();
+    (function step(now){
+      const t = Math.min((now-t0)/dur,1);
+      const e = t<.5?2*t*t:-1+(4-2*t)*t;
+      const pt = path.getPointAtLength(e*len);
+      g.setAttribute('transform',`translate(${pt.x},${pt.y})`);
+      t<1 ? requestAnimationFrame(step) : (()=>{try{svg.removeChild(g)}catch(_){}})();
+    })(t0);
+  }
+
+  // bump stat
+  function bump(id, val){
+    const el = document.getElementById(id);
+    el.textContent = val;
+    el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
+  }
+
+  // dist bars
+  function updateDist(){
+    const t = counts.total || 1;
+    ['a','b','c'].forEach(k=>{
+      const p = Math.round(counts[k]/t*100);
+      document.getElementById(`df-${k}`).style.width = p+'%';
+      document.getElementById(`dp-${k}`).textContent = p+'%';
+      document.getElementById(`st-${k}-p`).textContent = p+'%';
+    });
+  }
+
+  // throughput sparkline
+  function updateThru(){
+    thruHist.push(1);
+    if(thruHist.length>SLOTS) thruHist.shift();
+    const mx = Math.max(...thruHist,1);
+    thruBars.forEach((b,i)=>{
+      b.style.height = Math.max((thruHist[i]/mx)*38,3)+'px';
+      b.classList.toggle('now', i===thruHist.length-1);
+    });
+  }
+
+  // log
+  const logBody = document.getElementById('logBody');
+  function addLog(n, time, label, route){
+    const row = document.createElement('div');
+    row.className='log-row';
+    row.innerHTML =
+      `<span class="lr-n">${String(n).padStart(3,'0')}</span>`+
+      `<span class="lr-t">${time}</span>`+
+      `<span>${label}</span>`+
+      `<span class="lr-r ${route}">${LABELS[route]}</span>`;
+    logBody.insertBefore(row,logBody.firstChild);
+    while(logBody.children.length>10) logBody.removeChild(logBody.lastChild);
+  }
+
+  // router pulse
+  function pulseRouter(){
+    const c = document.getElementById('rcore');
+    c.setAttribute('r','8'); c.setAttribute('opacity','1');
+    setTimeout(()=>{
+      c.style.transition='r .45s ease,opacity .45s ease';
+      c.setAttribute('r','14'); c.setAttribute('opacity','0.25');
+    },20);
+    setTimeout(()=>{ c.setAttribute('r','8'); c.setAttribute('opacity','0.9'); },480);
+  }
+
+  // glow station
+  function glowStation(k){
+    const el = document.getElementById('fr'+k);
+    el.classList.add('glow-'+k);
+    setTimeout(()=>el.classList.remove('glow-'+k),950);
+  }
+
+  // station counter text
+  function updateCnt(k){
+    const el = document.getElementById('c'+k);
+    el.textContent = `events: ${perCnt[k]} · processing`;
+    setTimeout(()=>{ el.textContent = `events: ${perCnt[k]} · idle`; },750);
+  }
+
+  // signal text
+  function setSignal(label){
+    const s1=document.getElementById('sig1'), s2=document.getElementById('sig2');
+    if(label.length>15){
+      const sp=label.lastIndexOf(' ',15);
+      s1.textContent=label.slice(0,sp>0?sp:15);
+      s2.textContent=label.slice(sp>0?sp+1:15);
+    } else { s1.textContent=label; s2.textContent=''; }
+  }
+
+  // MAIN TICK
+  function tick(){
+    const ev = EVENTS[Math.floor(Math.random()*EVENTS.length)];
+    const {label, route} = ev;
+    const lat = 12+Math.floor(Math.random()*76);
+
+    setSignal(label);
+    pulseRouter();
+
+    setTimeout(()=> particle('p'+route, COLORS[route]), 160);
+
+    setTimeout(()=>{
+      counts.total++; counts[route]++; perCnt[route]++;
+      glowStation(route); updateCnt(route);
+      bump('st-tot', counts.total);
+      bump('st-'+route, counts[route]);
+      bump('st-lat', lat);
+      updateDist(); updateThru();
+      const n=new Date(), t=`${pad(n.getHours())}:${pad(n.getMinutes())}:${pad(n.getSeconds())}`;
+      addLog(++evNum, t, label, route);
+    }, 820);
+  }
+
+  tick(); setInterval(tick, 2200);
+})();
+</script>
+</body>
+</html>
